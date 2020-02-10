@@ -3,6 +3,7 @@
 #include "types.h"
 #include "user.h"
 #include "fcntl.h"
+#include "stat.h"
 
 // Parsed command representation
 #define EXEC  1
@@ -142,7 +143,7 @@ getcmd(char *buf, int nbuf)
 }
 
 int
-main(void)
+main(int argc, char *argv[])
 {
   static char buf[100];
   int fd;
@@ -152,6 +153,38 @@ main(void)
     if(fd >= 3){
       close(fd);
       break;
+    }
+  }
+  char *fileName = 0;
+  if(argc > 1)
+     fileName = argv[1];
+
+  int shFd;
+  if(fileName) {
+    if((shFd = open(fileName, O_RDONLY)) < 0) {
+      printf(1, "no file found\n");
+      exit1(1);
+    }
+
+    int rdVal = 0, index = 0;
+    char inputChar;
+    char dataBuffer[800];
+    while(1) {
+        rdVal = read(shFd, &inputChar, 1);
+        if(rdVal <= 0) {
+             exit();
+        } else if(inputChar == '\n' || inputChar == '\r') {
+            if(fork1() == 0) {
+               runcmd(parsecmd(dataBuffer));
+            }
+            wait();
+            //printf(1, "CMD: %s \n", dataBuffer);
+            memset(dataBuffer, 0, 800);
+            index = 0;
+
+       } else {
+           dataBuffer[index++] = inputChar;
+       }
     }
   }
 
