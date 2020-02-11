@@ -54,29 +54,6 @@ int fork1(void);  // Fork but panics on failure.
 void panic(char*);
 struct cmd *parsecmd(char*);
 
-int splitCmdAndRun(char *rawCmd) {
-  char c;
-  int i, j, leng = strlen(cmd);
-  char op[2];
-  char prCmd[800];
-  for(i = 0; i <= leng; i++) {
-      if(i == leng) {
-        printf("CMD1: %s ", prCmd)  
-      } else if(cmd[i] == '&' && (i+1 < leng && cmd[i+1] == '&')) {
-        i += 1;
-        printf("CMD&: %s ", prCmd)  
-        memset(prCmd, 0, 800);  
-        j = 0;
-      } else if (cmd[i] == '|' && (i+1 < leng && cmd[i+1] == '|')) {
-        i += 1;
-        printf("CMDOR: %s ", prCmd)  
-        memset(prCmd, 0, 800);
-        j = 0;  
-      } else {
-        prCmd[j++] = cmd[i];
-      }
-  }
-}
 
 // Execute cmd.  Never returns.
 void
@@ -155,6 +132,58 @@ runcmd(struct cmd *cmd)
   exit();
 }
 
+void splitCmdAndRun(char *cmd) {
+  int i, j = 0, leng = strlen(cmd);
+  char prCmd[800];
+  memset(prCmd, 0, 800);
+ // printf(1, "FullCMD: %s\n", cmd);
+  int skipNextExp = 1;       //Set to false ( if skipNextExp is 0 skips evaluating second arg. in || operator)
+  for(i = 0; i <= leng; i++) {
+      if(i == leng) {
+        int status = 0;
+        if(skipNextExp == 1) {
+            if(fork1()== 0) {
+               runcmd(parsecmd(prCmd));
+            }
+            wait1(&status);
+        }
+        break;
+      } else if(cmd[i] == '&' && (i+1 < leng && cmd[i+1] == '&')) {
+        i += 1;
+        if(fork1()== 0) {
+            runcmd(parsecmd(prCmd)); 
+        }
+        int childStatus = 0;
+        wait1(&childStatus);
+        if(childStatus != 0) {
+          break;                    
+        }
+//      printf(1, "CMD&: %s \n", prCmd);
+        memset(prCmd, 0, 800);
+        j = 0;
+      } else if (cmd[i] == '|' && (i+1 < leng && cmd[i+1] == '|')) {
+        i += 1;
+//      printf(1, "CMDOR: %s \n", prCmd);
+        if(skipNextExp == 1) {          //If skipNextExp is false Evaluate second term after ||
+             if(fork1() == 0) {
+                runcmd(parsecmd(prCmd));
+             }
+             int childStatus = 0;
+             wait1(&childStatus);
+             if(childStatus == 0) {
+                skipNextExp = 0;        //Skip second argument as first arg. evaluated to true
+             }
+        } else {
+            skipNextExp = 1;            //Second argument is skipped so reset the count
+        }
+        memset(prCmd, 0, 800);
+        j = 0;
+      } else {
+        prCmd[j++] = cmd[i];
+      }
+  }
+}
+
 int
 getcmd(char *buf, int nbuf)
 {
@@ -198,10 +227,7 @@ main(int argc, char *argv[])
         if(rdVal <= 0) {
              exit();
         } else if(inputChar == '\n' || inputChar == '\r') {
-            if(fork1() == 0) {
-               runcmd(parsecmd(dataBuffer));
-            }
-            wait();
+            splitCmdAndRun(dataBuffer);
             //printf(1, "CMD: %s \n", dataBuffer);
             memset(dataBuffer, 0, 800);
             index = 0;
@@ -211,7 +237,7 @@ main(int argc, char *argv[])
        }
     }
   }
-
+  else {
   // Read and run input commands.
   while(getcmd(buf, sizeof(buf)) >= 0){
     if(buf[0] == 'c' && buf[1] == 'd' && buf[2] == ' '){
@@ -221,9 +247,10 @@ main(int argc, char *argv[])
         printf(2, "cannot cd %s\n", buf+3);
       continue;
     }
-    if(fork1() == 0)
-      runcmd(parsecmd(buf));
+    if(fork1() == 0 )
+    splitCmdAndRun(buf);
     wait();
+  }
   }
   exit();
 }
