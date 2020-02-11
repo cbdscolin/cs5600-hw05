@@ -132,21 +132,23 @@ runcmd(struct cmd *cmd)
   exit();
 }
 
-void splitCmdAndRun(char *cmd) {
-  int i, j = 0, leng = strlen(cmd);
+int splitCmdAndRun(char *cmd) {
+  int i, j = 0, leng = strlen(cmd), returnValue = 0;
   char prCmd[800];
   memset(prCmd, 0, 800);
- // printf(1, "FullCMD: %s\n", cmd);
   int skipNextExp = 1;       //Set to false ( if skipNextExp is 0 skips evaluating second arg. in || operator)
   for(i = 0; i <= leng; i++) {
       if(i == leng) {
         int status = 0;
         if(skipNextExp == 1) {
-            if(fork1()== 0) {
+            if(fork1() == 0) {
                runcmd(parsecmd(prCmd));
             }
             wait1(&status);
+            returnValue = status;
         }
+        //printf(1 ,"Return code %d for %s\n", status, prCmd);
+
         break;
       } else if(cmd[i] == '&' && (i+1 < leng && cmd[i+1] == '&')) {
         i += 1;
@@ -156,14 +158,13 @@ void splitCmdAndRun(char *cmd) {
         int childStatus = 0;
         wait1(&childStatus);
         if(childStatus != 0) {
+          returnValue = childStatus;
           break;                    
         }
-//      printf(1, "CMD&: %s \n", prCmd);
         memset(prCmd, 0, 800);
         j = 0;
       } else if (cmd[i] == '|' && (i+1 < leng && cmd[i+1] == '|')) {
         i += 1;
-//      printf(1, "CMDOR: %s \n", prCmd);
         if(skipNextExp == 1) {          //If skipNextExp is false Evaluate second term after ||
              if(fork1() == 0) {
                 runcmd(parsecmd(prCmd));
@@ -182,6 +183,7 @@ void splitCmdAndRun(char *cmd) {
         prCmd[j++] = cmd[i];
       }
   }
+  return returnValue;
 }
 
 int
@@ -199,7 +201,7 @@ int
 main(int argc, char *argv[])
 {
   static char buf[100];
-  int fd;
+  int fd, retVal = 0;
 
   // Ensure that three file descriptors are open.
   while((fd = open("console", O_RDWR)) >= 0){
@@ -215,7 +217,6 @@ main(int argc, char *argv[])
   int shFd;
   if(fileName) {
     if((shFd = open(fileName, O_RDONLY)) < 0) {
-      printf(1, "no file found\n");
       exit1(1);
     }
 
@@ -225,9 +226,10 @@ main(int argc, char *argv[])
     while(1) {
         rdVal = read(shFd, &inputChar, 1);
         if(rdVal <= 0) {
-             exit();
+             break;
+             //exit1(retVal);
         } else if(inputChar == '\n' || inputChar == '\r') {
-            splitCmdAndRun(dataBuffer);
+            retVal = splitCmdAndRun(dataBuffer);
             //printf(1, "CMD: %s \n", dataBuffer);
             memset(dataBuffer, 0, 800);
             index = 0;
@@ -248,11 +250,11 @@ main(int argc, char *argv[])
       continue;
     }
     if(fork1() == 0 )
-    splitCmdAndRun(buf);
+    retVal = splitCmdAndRun(buf);
     wait();
   }
   }
-  exit();
+  exit1(retVal);
 }
 
 void
