@@ -54,6 +54,30 @@ int fork1(void);  // Fork but panics on failure.
 void panic(char*);
 struct cmd *parsecmd(char*);
 
+int splitCmdAndRun(char *rawCmd) {
+  char c;
+  int i, j, leng = strlen(cmd);
+  char op[2];
+  char prCmd[800];
+  for(i = 0; i <= leng; i++) {
+      if(i == leng) {
+        printf("CMD1: %s ", prCmd)  
+      } else if(cmd[i] == '&' && (i+1 < leng && cmd[i+1] == '&')) {
+        i += 1;
+        printf("CMD&: %s ", prCmd)  
+        memset(prCmd, 0, 800);  
+        j = 0;
+      } else if (cmd[i] == '|' && (i+1 < leng && cmd[i+1] == '|')) {
+        i += 1;
+        printf("CMDOR: %s ", prCmd)  
+        memset(prCmd, 0, 800);
+        j = 0;  
+      } else {
+        prCmd[j++] = cmd[i];
+      }
+  }
+}
+
 // Execute cmd.  Never returns.
 void
 runcmd(struct cmd *cmd)
