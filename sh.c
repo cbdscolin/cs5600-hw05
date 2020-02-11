@@ -59,7 +59,7 @@ struct cmd *parsecmd(char*);
 void
 runcmd(struct cmd *cmd)
 {
-  int p[2];
+  int p[2], retVal = 0;
   struct backcmd *bcmd;
   struct execcmd *ecmd;
   struct listcmd *lcmd;
@@ -68,11 +68,9 @@ runcmd(struct cmd *cmd)
 
   if(cmd == 0)
     exit();
-
   switch(cmd->type){
   default:
     panic("runcmd");
-
   case EXEC:
     ecmd = (struct execcmd*)cmd;
     if(ecmd->argv[0] == 0)
@@ -110,6 +108,7 @@ runcmd(struct cmd *cmd)
       close(p[1]);
       runcmd(pcmd->left);
     }
+    wait1(&retVal);
     if(fork1() == 0){
       close(0);
       dup(p[0]);
@@ -119,8 +118,8 @@ runcmd(struct cmd *cmd)
     }
     close(p[0]);
     close(p[1]);
-    wait();
-    wait();
+    wait1(&retVal);
+    exit1(retVal);
     break;
 
   case BACK:
@@ -141,13 +140,14 @@ int splitCmdAndRun(char *cmd) {
       if(i == leng) {
         int status = 0;
         if(skipNextExp == 1) {
-            if(fork1() == 0) {
-               runcmd(parsecmd(prCmd));
-            }
-            wait1(&status);
-            returnValue = status;
+           if(fork1() == 0) { 
+              runcmd(parsecmd(prCmd));
+           }
+           wait1(&status);
+           returnValue = status;
+                
         }
-        //printf(1 ,"Return code %d for %s\n", status, prCmd);
+       // printf(1 ,"Return code %d for %s\n", status, prCmd);
 
         break;
       } else if(cmd[i] == '&' && (i+1 < leng && cmd[i+1] == '&')) {
@@ -250,7 +250,7 @@ main(int argc, char *argv[])
       continue;
     }
     if(fork1() == 0 )
-    retVal = splitCmdAndRun(buf);
+       retVal = splitCmdAndRun(buf);
     wait();
   }
   }
