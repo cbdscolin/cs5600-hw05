@@ -3,6 +3,7 @@
 #include "types.h"
 #include "user.h"
 #include "fcntl.h"
+#include "stat.h"
 
 // Parsed command representation
 #define EXEC  1
@@ -53,11 +54,12 @@ int fork1(void);  // Fork but panics on failure.
 void panic(char*);
 struct cmd *parsecmd(char*);
 
+
 // Execute cmd.  Never returns.
 void
 runcmd(struct cmd *cmd)
 {
-  int p[2];
+  int p[2], retVal = 0;
   struct backcmd *bcmd;
   struct execcmd *ecmd;
   struct listcmd *lcmd;
@@ -66,11 +68,9 @@ runcmd(struct cmd *cmd)
 
   if(cmd == 0)
     exit();
-
   switch(cmd->type){
   default:
     panic("runcmd");
-
   case EXEC:
     ecmd = (struct execcmd*)cmd;
     if(ecmd->argv[0] == 0)
@@ -108,6 +108,7 @@ runcmd(struct cmd *cmd)
       close(p[1]);
       runcmd(pcmd->left);
     }
+    wait1(&retVal);
     if(fork1() == 0){
       close(0);
       dup(p[0]);
@@ -117,8 +118,8 @@ runcmd(struct cmd *cmd)
     }
     close(p[0]);
     close(p[1]);
-    wait();
-    wait();
+    wait1(&retVal);
+    exit1(retVal);
     break;
 
   case BACK:
@@ -128,6 +129,61 @@ runcmd(struct cmd *cmd)
     break;
   }
   exit();
+}
+
+int splitCmdAndRun(char *cmd) {
+  int i, j = 0, leng = strlen(cmd), returnValue = 0;
+  char prCmd[800];
+  memset(prCmd, 0, 800);
+  int skipNextExp = 1;       //Set to false ( if skipNextExp is 0 skips evaluating second arg. in || operator)
+  for(i = 0; i <= leng; i++) {
+      if(i == leng) {
+        int status = 0;
+        if(skipNextExp == 1) {
+           if(fork1() == 0) { 
+              runcmd(parsecmd(prCmd));
+           }
+           wait1(&status);
+           returnValue = status;
+                
+        }
+       // printf(1 ,"Return code %d for %s\n", status, prCmd);
+
+        break;
+      } else if(cmd[i] == '&' && (i+1 < leng && cmd[i+1] == '&')) {
+        i += 1;
+        if(fork1()== 0) {
+            runcmd(parsecmd(prCmd)); 
+        }
+        int childStatus = 0;
+        wait1(&childStatus);
+        if(childStatus != 0) {
+          returnValue = childStatus;
+          break;                    
+        }
+        memset(prCmd, 0, 800);
+        j = 0;
+      } else if (cmd[i] == '|' && (i+1 < leng && cmd[i+1] == '|')) {
+        i += 1;
+        if(skipNextExp == 1) {          //If skipNextExp is false Evaluate second term after ||
+             if(fork1() == 0) {
+                runcmd(parsecmd(prCmd));
+             }
+             int childStatus = 0;
+             wait1(&childStatus);
+             if(childStatus == 0) {
+                skipNextExp = 0;        //Skip second argument as first arg. evaluated to true
+             }
+        } else {
+            skipNextExp = 1;            //Second argument is skipped so reset the count
+        }
+        memset(prCmd, 0, 800);
+        j = 0;
+      } else {
+        prCmd[j++] = cmd[i];
+      }
+  }
+  return returnValue;
 }
 
 int
@@ -142,10 +198,10 @@ getcmd(char *buf, int nbuf)
 }
 
 int
-main(void)
+main(int argc, char *argv[])
 {
   static char buf[100];
-  int fd;
+  int fd, retVal = 0;
 
   // Ensure that three file descriptors are open.
   while((fd = open("console", O_RDWR)) >= 0){
@@ -154,7 +210,36 @@ main(void)
       break;
     }
   }
+  char *fileName = 0;
+  if(argc > 1)
+     fileName = argv[1];
 
+  int shFd;
+  if(fileName) {
+    if((shFd = open(fileName, O_RDONLY)) < 0) {
+      exit1(1);
+    }
+
+    int rdVal = 0, index = 0;
+    char inputChar;
+    char dataBuffer[800];
+    while(1) {
+        rdVal = read(shFd, &inputChar, 1);
+        if(rdVal <= 0) {
+             break;
+             //exit1(retVal);
+        } else if(inputChar == '\n' || inputChar == '\r') {
+            retVal = splitCmdAndRun(dataBuffer);
+            //printf(1, "CMD: %s \n", dataBuffer);
+            memset(dataBuffer, 0, 800);
+            index = 0;
+
+       } else {
+           dataBuffer[index++] = inputChar;
+       }
+    }
+  }
+  else {
   // Read and run input commands.
   while(getcmd(buf, sizeof(buf)) >= 0){
     if(buf[0] == 'c' && buf[1] == 'd' && buf[2] == ' '){
@@ -164,11 +249,12 @@ main(void)
         printf(2, "cannot cd %s\n", buf+3);
       continue;
     }
-    if(fork1() == 0)
-      runcmd(parsecmd(buf));
+    if(fork1() == 0 )
+       retVal = splitCmdAndRun(buf);
     wait();
   }
-  exit();
+  }
+  exit1(retVal);
 }
 
 void

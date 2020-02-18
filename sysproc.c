@@ -14,6 +14,17 @@ sys_fork(void)
 }
 
 int
+sys_exit1(void)
+{
+  int status;
+  if(argint(0, &status) < 0) {
+    return -1;
+  }
+  exit1(status);
+  return 0;
+}
+
+int
 sys_exit(void)
 {
   exit();
@@ -24,6 +35,16 @@ int
 sys_wait(void)
 {
   return wait();
+}
+
+int
+sys_wait1(void)
+{
+  int *status;
+  if(argptr(0, (void*) &status, sizeof(int)) < 0) {
+    return -1;
+  }   
+  return wait1(status);
 }
 
 int

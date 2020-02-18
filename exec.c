@@ -24,6 +24,7 @@ exec(char *path, char **argv)
   if((ip = namei(path)) == 0){
     end_op();
     cprintf("exec: fail\n");
+    curproc->exitStatus = 1;
     return -1;
   }
   ilock(ip);
@@ -110,5 +111,6 @@ exec(char *path, char **argv)
     iunlockput(ip);
     end_op();
   }
+  curproc->exitStatus = 1;
   return -1;
 }
